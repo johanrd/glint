@@ -392,7 +392,6 @@ function getCompletionsAtPosition<T>(
         }
       }
 
-      console.log(completions);
       return completions!;
     } catch (e) {
       console.log('error', (e as any)?.message);
