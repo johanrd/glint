@@ -122,6 +122,50 @@ import { expectTypeOf } from 'expect-type';
   }
 }
 
+// Issue #591: Union types for Args should be assignable
+// A component with union Args should be callable from another component
+// with the same union Args (passing through @tagName).
+{
+  interface DynamicTagBlocks {
+    Blocks: { default: [] };
+  }
+
+  interface WithLi extends DynamicTagBlocks {
+    Args: { tagName: 'li' };
+    Element: HTMLLIElement;
+  }
+
+  interface WithDiv extends DynamicTagBlocks {
+    Args: { tagName?: 'div' | undefined };
+    Element: HTMLDivElement;
+  }
+
+  type DynamicTagSignature = WithLi | WithDiv;
+
+  class DynamicTag extends Component<DynamicTagSignature> {}
+
+  // This should work: passing a union arg from another component with the same union signature
+  // BUG(#591): TypeScript can't match the collapsed union 'li' | 'div' | undefined
+  // against the distributed union members in the function signature.
+  class Caller extends Component<DynamicTagSignature> {
+    static {
+      templateForBackingValue(this, function (__glintRef__) {
+        emitComponent(
+          // @ts-expect-error: #591 - Union args collapse when passed through, breaking assignability
+          resolve(DynamicTag)({ tagName: __glintRef__.args.tagName, ...NamedArgsMarker }),
+        );
+      });
+    }
+  }
+
+  // Direct invocation with literal should also work
+  emitComponent(resolve(DynamicTag)({ tagName: 'li' as const, ...NamedArgsMarker }));
+  emitComponent(resolve(DynamicTag)({ tagName: 'div' as const, ...NamedArgsMarker }));
+  emitComponent(resolve(DynamicTag)({ ...NamedArgsMarker }));
+
+  resolve(Caller);
+}
+
 // Components are `ComponentLike`
 {
   interface TestSignature {
