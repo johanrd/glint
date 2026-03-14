@@ -1,6 +1,8 @@
 import Modifier from 'ember-modifier';
+import { modifier } from 'ember-modifier';
 import { hbs } from 'ember-cli-htmlbars';
 import { typeTest } from '@glint/type-test';
+import { ModifierLike } from '@glint/template';
 
 class Render3DModelModifier extends Modifier<{
   Element: HTMLCanvasElement;
@@ -68,6 +70,60 @@ typeTest(
       {{! @glint-expect-error: extra positional arg }}
       <canvas {{boundRender (array) "hello"}}></canvas>
     {{/let}}
+  `,
+);
+
+// Issue #886: Modifier with only optional args should work when bound with modifier keyword
+// (Verified fixed - this test documents that it works correctly now)
+typeTest(
+  {
+    optMod: undefined as unknown as ModifierLike<{
+      Args: {
+        Named: {
+          value?: string;
+        };
+      };
+    }>,
+  },
+  hbs`
+    {{! Binding optional named arg should produce a usable modifier }}
+    {{#let (modifier this.optMod value="anything") as |aModifier|}}
+      <div {{aModifier}}></div>
+    {{/let}}
+
+    {{! No-op binding (no args pre-bound) should also work }}
+    {{#let (modifier this.optMod) as |noopMod|}}
+      <div {{noopMod}}></div>
+      <div {{noopMod value="test"}}></div>
+    {{/let}}
+  `,
+);
+
+// Issue #719: A keyword-only modifier with optional args should type-check with modifier helper
+// (Verified fixed - this test documents that it works correctly now)
+typeTest(
+  {
+    scrollMod: undefined as unknown as ModifierLike<{
+      Element: HTMLElement;
+      Args: {
+        Named: {
+          block?: ScrollLogicalPosition;
+        };
+      };
+    }>,
+  },
+  hbs`
+    <div {{(if true (modifier this.scrollMod block="nearest"))}}></div>
+  `,
+);
+
+// Issue #812: Conditional modifier with custom modifier (verified fixed)
+typeTest(
+  {
+    custom: modifier(function () {}),
+  },
+  hbs`
+    <button {{(if true (modifier this.custom))}}>test</button>
   `,
 );
 
