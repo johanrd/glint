@@ -392,7 +392,26 @@ function getCompletionsAtPosition<T>(
         }
       }
 
-      console.log(completions);
+      if (completions) {
+        // Strip .gts/.gjs extensions from auto-import module specifiers (#875).
+        // TypeScript includes the full extension for extraFileExtensions, but
+        // most Ember build contexts expect extensionless imports. The module
+        // will still resolve thanks to resolveHiddenExtensions: true.
+        completions.entries = completions.entries.map((e) => {
+          if (e.source && /\.g[tj]s$/.test(e.source)) {
+            return {
+              ...e,
+              source: e.source.replace(/\.g[tj]s$/, ''),
+              sourceDisplay: e.sourceDisplay?.map((part) => ({
+                ...part,
+                text: part.text.replace(/\.g[tj]s$/, ''),
+              })),
+            };
+          }
+          return e;
+        });
+      }
+
       return completions!;
     } catch (e) {
       console.log('error', (e as any)?.message);
