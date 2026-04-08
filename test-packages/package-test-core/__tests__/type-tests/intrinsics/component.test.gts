@@ -136,6 +136,81 @@ const OptionalArgCurriedTest = <template>
   {{/let}}
 </template>;
 
+// Regression test: hokulea-style discriminated union modifier in generic component.
+// Reproduces https://github.com/typed-ember/glint/issues/1107
+//
+// A modifier whose Named args use a discriminated union (multi: true vs false)
+// used inside a generic component that passes through its generic type.
+// The discriminated union creates overloaded call signatures, and
+// `multi: boolean | undefined` doesn't match either `multi: true` or `multi?: false`.
+//
+// This error was previously swallowed because __glintY__.element lacked its own
+// Volar source mapping (fixed in #1087). The type error is real — consider
+// narrowing the discriminant or restructuring the union type.
+{
+  type WithItems<T> = {
+    items: T[];
+    selection?: T | T[];
+    activateItem?: (item: T) => void;
+  } & (
+    | { multi: true; select?: (selection: T[]) => void }
+    | { multi?: false; select?: (selection: T) => void }
+  );
+
+  type OptionalItems = {
+    items?: HTMLElement[];
+    selection?: HTMLElement | HTMLElement[];
+    activateItem?: (item: HTMLElement) => void;
+  } & (
+    | { multi: true; select?: (selection: HTMLElement[]) => void }
+    | { multi?: false; select?: (selection: HTMLElement) => void }
+  );
+
+  type EmitterSignature<T> = WithItems<T> | OptionalItems;
+
+  type ListboxModifier<V> = import('@glint/template').ModifierLike<{
+    Element: HTMLElement;
+    Args: {
+      Named: EmitterSignature<V> & { disabled?: boolean };
+    };
+  }>;
+
+  // Generic wrapper component (like hokulea's List<V>).
+  // Passes multi as `boolean | undefined` — doesn't match either branch
+  // of the discriminated union, so TS correctly rejects it.
+  class List<V> extends Component<{
+    Element: HTMLDivElement;
+    Args: {
+      items: V[];
+      value?: V | V[];
+      multiple?: boolean;
+      disabled?: boolean;
+      update?: (value: V | V[]) => void;
+      activateItem?: (value: V) => void;
+    };
+    Blocks: { default: [] };
+  }> {
+    declare ariaListbox: ListboxModifier<V>;
+
+    <template>
+      <div
+        ...attributes
+        {{! @glint-expect-error: multi: boolean | undefined is not assignable to true | false discriminant }}
+        {{this.ariaListbox
+          items=@items
+          selection=@value
+          multi=@multiple
+          disabled=@disabled
+          select=@update
+          activateItem=@activateItem
+        }}
+      >
+        {{yield}}
+      </div>
+    </template>
+  }
+}
+
 // Issue #661: WithBoundArgs with ModifierLike arg — verified fixed.
 // Currying named args including ModifierLike no longer causes TS2589.
 {
