@@ -1009,7 +1009,24 @@ export function templateToTypescript(
         // component/helper, and returned as a value otherwise.
         let hasParams = Boolean(node.hash.pairs.length || node.params.length);
         if (!hasParams && position === 'arg' && !isGlobal(node.path)) {
-          emitExpression(node.path);
+          // Bind-invokable block params get `as any` to prevent their
+          // independent generic from overriding the consumer's T (#1068).
+          // Ideally NoInfer or a type-level fix would preserve safety, but
+          // TS can't unify HOI-preserved generics with the enclosing scope's T.
+          // Type safety is maintained by the keyword validation in the comma
+          // expression's first stage.
+          if (
+            node.path.type === 'PathExpression' &&
+            node.path.head.type === 'VarHead' &&
+            !node.path.tail.length &&
+            scope.isBindInvokable(node.path.head.name)
+          ) {
+            mapper.text('(');
+            emitExpression(node.path);
+            mapper.text(' as any)');
+          } else {
+            emitExpression(node.path);
+          }
         } else if (position === 'top-level') {
           // e.g. top-level mustache `{{someValue}}`
           mapper.text('__glintDSL__.emitContent(');
@@ -1176,6 +1193,25 @@ export function templateToTypescript(
         return;
       }
 
+      // Mark {{#let}} block params from bind-invokable subexpressions (#1068).
+      // These get `as any` when passed as args to prevent their independent
+      // generic from overriding the consumer's T inference.
+      let marked: string[] | undefined;
+      if (node.path.type === 'PathExpression' && node.path.original === 'let') {
+        for (let i = 0; i < node.params.length && i < node.program.blockParams.length; i++) {
+          let p = node.params[i];
+          if (
+            p.type === 'SubExpression' &&
+            checkSpecialForm(p)?.form === 'bind-invokable' &&
+            p.hash.pairs.length > 0
+          ) {
+            let name = node.program.blockParams[i];
+            scope.markBindInvokable(name);
+            (marked ??= []).push(name);
+          }
+        }
+      }
+
       mapper.forNode(node, () => {
         mapper.text('{');
         mapper.newline();
@@ -1205,6 +1241,8 @@ export function templateToTypescript(
         mapper.dedent();
         mapper.text('}');
       });
+
+      if (marked) for (let name of marked) scope.unmarkBindInvokable(name);
 
       mapper.newline();
     }
