@@ -136,6 +136,108 @@ const OptionalArgCurriedTest = <template>
   {{/let}}
 </template>;
 
+// Issue #1068 (deep): generic T must survive {{component}} currying
+// through {{#let}} when named args are bound. Minimal reproduction
+// from @hlorellium's second report.
+{
+  class PickerOption<T> extends Component<{
+    Args: { value: T; onSelect: (value: T) => void };
+    Blocks: { default: [T] };
+  }> {
+    <template>{{yield @value}}</template>
+  }
+
+  class Picker<T> extends Component<{
+    Args: { onSelect: (value: T) => void };
+    Blocks: { default: [WithBoundArgs<typeof PickerOption, 'onSelect'>] };
+  }> {
+    <template>
+      {{! This is the core issue: (component PickerOption onSelect=@onSelect) }}
+      {{! should preserve T so the yielded component keeps its generic. }}
+      {{yield (component PickerOption onSelect=@onSelect)}}
+    </template>
+  }
+}
+
+// Issue #1068 (deeper): hlorellium's reproduction.
+// Cell<T extends Identifiable> curried via {{component}}, passed through
+// Row<T> via WithBoundArgs<ComponentLike<...>, never>. T must survive.
+// Fixed: bind-invokable block params are cast to `any` when used as args
+// to prevent the independent generic from overriding T inference.
+{
+  interface Identifiable {
+    id: string;
+  }
+
+  class Cell<T extends Identifiable> extends Component<{
+    Args: {
+      item: T;
+      onSelect: (item: T) => void;
+      highlight?: boolean;
+    };
+    Blocks: { default: [T] };
+    Element: HTMLTableCellElement;
+  }> {
+    <template>
+      <td ...attributes>{{yield @item}}</td>
+    </template>
+  }
+
+  class Row<T extends Identifiable> extends Component<{
+    Args: {
+      BoundCell: WithBoundArgs<
+        import('@glint/template').ComponentLike<{
+          Args: { item: T; highlight?: boolean };
+          Blocks: { default: [T] };
+          Element: HTMLTableCellElement;
+        }>,
+        never
+      >;
+      item: T;
+      isSelected: boolean;
+    };
+    Blocks: { default: [T] };
+    Element: HTMLTableRowElement;
+  }> {
+    <template>
+      <tr ...attributes>
+        <@BoundCell @item={{@item}} @highlight={{@isSelected}} as |cellItem|>
+          {{yield cellItem}}
+        </@BoundCell>
+      </tr>
+    </template>
+  }
+
+  class DataTable<T extends Identifiable> extends Component<{
+    Args: {
+      items: T[];
+      selected: T;
+      onSelect: (item: T) => void;
+    };
+    Blocks: { default: [T] };
+    Element: HTMLTableElement;
+  }> {
+    <template>
+      <table ...attributes>
+        <tbody>
+          {{#let (component Cell onSelect=@onSelect) as |BoundCell|}}
+            {{#each @items as |item|}}
+              <Row
+                @BoundCell={{BoundCell}}
+                @item={{item}}
+                @isSelected={{false}}
+                as |rowItem|
+              >
+                {{yield rowItem}}
+              </Row>
+            {{/each}}
+          {{/let}}
+        </tbody>
+      </table>
+    </template>
+  }
+}
+
 // Issue #661: WithBoundArgs with ModifierLike arg — verified fixed.
 // Currying named args including ModifierLike no longer causes TS2589.
 {
