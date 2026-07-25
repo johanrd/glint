@@ -350,23 +350,18 @@ describe('Language Server: Diagnostics (ts plugin)', () => {
     expect(diagnostics[0].start.line).toBe(8);
   });
 
-  test('reports missing-argument errors on block-form curly invocations', async () => {
+  test('reports missing-argument errors on block-form invocations', async () => {
     // TS anchors "Expected N arguments, but got M" on the generated
     // `__glintDSL__.resolve(...)` callee emitted by emitBlockStatement,
-    // which had no covering mapping, so a block component invoked without
-    // its required args was silently accepted.
+    // which had no covering mapping, so an {{#each}} (or {{#let}},
+    // {{#in-element}}, or block-form component) invoked without its
+    // required arguments was silently accepted.
     const code = stripIndent`
       import Component from '@glimmer/component';
-      import type { ComponentLike } from '@glint/template';
-
-      declare const ListComp: ComponentLike<{
-        Args: { items: string[] };
-        Blocks: { default: [] };
-      }>;
 
       export default class Repro extends Component {
         <template>
-          {{#ListComp}}x{{/ListComp}}
+          {{#each as |item|}}{{item}}{{/each}}
         </template>
       }
     `;
@@ -379,8 +374,8 @@ describe('Language Server: Diagnostics (ts plugin)', () => {
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].code).toBe(2554);
-    expect(diagnostics[0].text).toContain('Expected 1 arguments, but got 0');
-    expect(diagnostics[0].start.line).toBe(11);
+    expect(diagnostics[0].text).toContain('Expected 1-2 arguments, but got 0');
+    expect(diagnostics[0].start.line).toBe(5);
   });
 
   test('honors @glint-expect-error / ignore shared test throws error', async () => {
