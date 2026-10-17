@@ -1244,6 +1244,83 @@ describe('Transform: rewriteTemplate', () => {
       `);
     });
 
+    test('form with named controls', () => {
+      let template = stripIndent`
+        <form>
+          <input name="from">
+          {{#if @withTo}}<input name="to">{{/if}}
+          {{#let @value as |value|}}<input name="value" value={{value}}>{{/let}}
+          {{#each @list as |item|}}<input name="item" value={{item}}>{{else}}<input name="empty">{{/each}}
+          {{#in-element @target}}<input name="outside">{{/in-element}}
+          <Field><select name="connector"></select></Field>
+          <input name="size" type="radio"><input name="size" type="radio">
+          <input name={{@dynamic}}>
+          <input name="elsewhere" form="other">
+          <iframe name="frame"></iframe>
+        </form>
+      `;
+
+      expect(
+        templateBody(template)
+          .split('\n')
+          .find((line) => line.includes('emitFormElement')),
+      ).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "from": [["input", "once"]]; "to": [["input", "maybe"]]; "value": [["input", "once"]]; "item": [["input", "many"]]; "empty": [["input", "maybe"]]; "connector": [["select", "many"]]; "size": [["input", "once"], ["input", "once"]]; "frame": [["iframe", "once"]]; }>("form");"`,
+      );
+    });
+
+    test('form with controls in exclusive branches', () => {
+      let template = stripIndent`
+        <form>
+          {{#if @a}}<input name="all">{{else if @b}}<select name="all"></select>{{else}}<input name="all">{{/if}}
+          {{#if @a}}<input name="some">{{else if @b}}<input name="some">{{/if}}
+          {{#if @a}}<input name="pair"><input name="pair">{{else}}<input name="pair">{{/if}}
+        </form>
+      `;
+
+      expect(
+        templateBody(template)
+          .split('\n')
+          .find((line) => line.includes('emitFormElement')),
+      ).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "all": [["input" | "select", "once"]]; "some": [["input", "maybe"]]; "pair": [["input", "once"], ["input", "maybe"]]; }>("form");"`,
+      );
+    });
+
+    test('form controls found by id', () => {
+      let template = stripIndent`
+        <form>
+          <input id="title" name="title">
+          <select name="role"></select><input id="role" name="other">
+        </form>
+      `;
+
+      expect(
+        templateBody(template)
+          .split('\n')
+          .find((line) => line.includes('emitFormElement')),
+      ).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "title": [["input", "once"]]; "role": [["select", "once"], ["input", "once"]]; "other": [["input", "once"]]; }>("form");"`,
+      );
+    });
+
+    test('form without named controls', () => {
+      let template = '<form><input></form>';
+
+      expect(templateBody(template)).toMatchInlineSnapshot(`
+        "{
+        __glintDSL__.noop(__glintDSL__.elementTypes.form);
+        __glintDSL__.noop(__glintDSL__.elementTypes["form"]);
+        const __glintY__ = __glintDSL__.emitElement("form");
+        {
+        __glintDSL__.noop(__glintDSL__.elementTypes.input);
+        __glintDSL__.noop(__glintDSL__.elementTypes["input"]);
+        const __glintY__ = __glintDSL__.emitElement("input");
+        }
+        }"
+      `);
+    });
+
     test('with splattributes', () => {
       let template = '<div ...attributes></div>';
 

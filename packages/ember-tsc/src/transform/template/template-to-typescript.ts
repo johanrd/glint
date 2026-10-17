@@ -70,6 +70,53 @@ const HYPHENATED_GLOBAL_ALIASES: Record<string, string> = {
   'unique-id': 'unique_id',
 };
 
+type FormControlPresence = 'once' | 'maybe' | 'many';
+// A radio's static `value` is recorded so a group's `RadioNodeList.value` can be typed.
+type FoundFormControl = [element: string, presence: FormControlPresence, radioValue?: string];
+type FoundFormControls = Map<string, Array<FoundFormControl>>;
+
+// Content rendered one after the other: occurrences add up.
+function concatControls(a: FoundFormControls, b: FoundFormControls): FoundFormControls {
+  let result = new Map(a);
+  for (let [name, occurrences] of b) {
+    result.set(name, [...(result.get(name) ?? []), ...occurrences]);
+  }
+  return result;
+}
+
+// Branches of which at most one renders: a name renders as often as in the branch
+// that renders it most, and only definitely when every branch of an exhaustive
+// block renders it.
+function exclusiveControls(
+  branches: Array<FoundFormControls>,
+  exhaustive: boolean,
+): FoundFormControls {
+  let result: FoundFormControls = new Map();
+  for (let name of new Set(branches.flatMap((branch) => [...branch.keys()]))) {
+    let lists = branches.map((branch) => branch.get(name) ?? []);
+    let widest = lists.reduce((a, b) => (b.length > a.length ? b : a));
+    let element = [...new Set(lists.flat().flatMap(([element]) => element.split(' | ')))].join(
+      ' | ',
+    );
+    result.set(
+      name,
+      widest.map((_, index): FoundFormControl => {
+        let presences = lists.map((list) => list[index]?.[1]);
+        let radioValues = new Set(lists.map((list) => list[index]?.[2]));
+        let [radioValue] = radioValues.size === 1 ? [...radioValues] : [];
+        let definite = exhaustive && presences.every((p) => p === 'once');
+        let presence: FormControlPresence = presences.includes('many')
+          ? 'many'
+          : definite
+            ? 'once'
+            : 'maybe';
+        return radioValue === undefined ? [element, presence] : [element, presence, radioValue];
+      }),
+    );
+  }
+  return result;
+}
+
 export type TemplateToTypescriptOptions = {
   typesModule: string;
   meta?: GlintEmitMetadata | undefined;
@@ -778,12 +825,7 @@ export function templateToTypescript(
     }
 
     function emitElementNode(node: AST.ElementNode): void {
-      let firstCharacter = node.tag.charAt(0);
-      if (
-        firstCharacter.toUpperCase() === firstCharacter ||
-        node.tag.includes('.') ||
-        scope.hasBinding(node.tag)
-      ) {
+      if (isComponentTag(node.tag)) {
         emitComponent(node);
       } else {
         emitPlainElement(node);
@@ -1131,7 +1173,21 @@ export function templateToTypescript(
           );
           mapper.text('"]);');
           mapper.newline();
-          mapper.text(`const __glintY__ = __glintDSL__.emitElement("${node.tag}");`);
+          let formControls = node.tag === 'form' ? collectFormControls(node) : undefined;
+          if (formControls?.size) {
+            mapper.text('const __glintY__ = __glintDSL__.emitFormElement<{ ');
+            for (let [name, occurrences] of formControls) {
+              let tuple = occurrences.map(([element, presence, radioValue]) =>
+                radioValue === undefined
+                  ? `[${element}, "${presence}"]`
+                  : `[${element}, "${presence}", ${JSON.stringify(radioValue)}]`,
+              );
+              mapper.text(`${JSON.stringify(name)}: [${tuple.join(', ')}]; `);
+            }
+            mapper.text('}>("form");');
+          } else {
+            mapper.text(`const __glintY__ = __glintDSL__.emitElement("${node.tag}");`);
+          }
         } else {
           // In SVG/MathML context the tag name stays mapped onto the emit
           // function's argument: its `keyof` constraint anchors "unknown
@@ -1162,6 +1218,121 @@ export function templateToTypescript(
         mapper.text('}');
         mapper.newline();
       });
+    }
+
+    // Records where each element with a static `name` renders inside a form:
+    // `once` whenever the form does, `maybe` inside a conditional block, `many`
+    // inside `{{#each}}` or a component's contents. Which of them are form
+    // controls is left to the `emitFormElement` types, which read it from lib.dom.
+    function collectFormControls(form: AST.ElementNode): FoundFormControls {
+      // Block params declared inside the form are not in scope where the form is emitted.
+      let innerBindings = new Set<string>();
+
+      let visit = (
+        statements: Array<AST.Statement>,
+        presence: FormControlPresence,
+      ): FoundFormControls => {
+        let found: FoundFormControls = new Map();
+        for (let statement of statements) {
+          if (statement.type === 'BlockStatement') {
+            let path = statement.path;
+            let keyword =
+              path.type === 'PathExpression' && !scope.hasBinding(path.original)
+                ? path.original
+                : '';
+            // `{{#in-element}}` renders its contents outside the form.
+            if (keyword === 'in-element') continue;
+
+            for (let param of [
+              ...statement.program.blockParams,
+              ...(statement.inverse?.blockParams ?? []),
+            ]) {
+              innerBindings.add(param);
+            }
+
+            let program = statement.program.body;
+            let inverse = statement.inverse?.body ?? [];
+            if (keyword === 'let') {
+              found = concatControls(found, visit(program, presence));
+            } else if (keyword === 'if' || keyword === 'unless') {
+              let branches = [visit(program, presence), visit(inverse, presence)];
+              found = concatControls(found, exclusiveControls(branches, !!statement.inverse));
+            } else if (keyword === 'each' || keyword === 'each-in') {
+              let branches = [visit(program, 'many'), visit(inverse, presence)];
+              found = concatControls(found, exclusiveControls(branches, false));
+            } else {
+              // Any other block may yield any number of times.
+              found = concatControls(found, visit(program, 'many'));
+              found = concatControls(found, visit(inverse, 'many'));
+            }
+          } else if (statement.type === 'ElementNode') {
+            if (isComponentTag(statement.tag)) {
+              // A static `name` lands on the element the component's signature names as its
+              // `Element`, the target of its `...attributes`.
+              if (
+                VALID_JS_IDENTIFIER.test(statement.tag) &&
+                !innerBindings.has(statement.tag) &&
+                !statement.attributes.some((attr) => attr.name === 'form')
+              ) {
+                let component = treatAsGlobal(statement.tag)
+                  ? `__glintDSL__.Globals.${statement.tag}`
+                  : makeJSSafe(statement.tag);
+                let element = `import("${typesModule}").ComponentElement<typeof ${component}>`;
+                found = concatControls(found, controlKeys(statement, [element, presence]));
+              }
+              for (let child of statement.children) {
+                if (child.type === 'ElementNode' && child.tag.startsWith(':')) {
+                  for (let param of child.blockParams) innerBindings.add(param);
+                }
+              }
+              for (let param of statement.blockParams) innerBindings.add(param);
+              // A component may render its blocks any number of times.
+              found = concatControls(found, visit(statement.children, 'many'));
+              continue;
+            }
+            // Nested forms are invalid HTML, and <template> contents are inert.
+            if (statement.tag === 'form' || statement.tag === 'template') continue;
+
+            // A `form` attribute associates the control with another form.
+            if (!statement.attributes.some((attr) => attr.name === 'form')) {
+              let element = JSON.stringify(statement.tag);
+              let radioValue =
+                statement.tag === 'input' && staticAttribute(statement, 'type') === 'radio'
+                  ? staticAttribute(statement, 'value')
+                  : undefined;
+              let occurrence: FoundFormControl =
+                radioValue === undefined ? [element, presence] : [element, presence, radioValue];
+              found = concatControls(found, controlKeys(statement, occurrence));
+            }
+            found = concatControls(found, visit(statement.children, presence));
+          }
+        }
+        return found;
+      };
+
+      return visit(form.children, 'once');
+    }
+
+    // `form.elements` finds a control by its `name` and by its `id`.
+    function controlKeys(node: AST.ElementNode, occurrence: FoundFormControl): FoundFormControls {
+      let keys = [staticAttribute(node, 'name'), staticAttribute(node, 'id')].filter(
+        (key): key is string => !!key,
+      );
+      return new Map([...new Set(keys)].map((key) => [key, [occurrence]]));
+    }
+
+    function staticAttribute(node: AST.ElementNode, name: string): string | undefined {
+      let attr = node.attributes.find((attr) => attr.name === name);
+      return attr?.value.type === 'TextNode' ? attr.value.chars : undefined;
+    }
+
+    function isComponentTag(tag: string): boolean {
+      let firstCharacter = tag.charAt(0);
+      return (
+        firstCharacter.toUpperCase() === firstCharacter ||
+        tag.includes('.') ||
+        scope.hasBinding(tag)
+      );
     }
 
     function emitAttributesAndModifiers(
