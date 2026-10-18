@@ -1,0 +1,34 @@
+{
+  "name": "bench",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "bench:check": "node check.mjs",
+    "bench:compare": "node compare.mjs",
+    "bench:transform": "node transform.mjs"
+  },
+  "dependenciesMeta": {
+    "@glint/template": {
+      "injected": true
+    },
+    "@glint/ember-tsc": {
+      "injected": true
+    }
+  },
+  "devDependencies": {
+    "@ember/app-tsconfig": "2.0.0",
+    "@glimmer/component": "2.1.1",
+    "@glint/ember-tsc": "workspace:*",
+    "@glint/template": "workspace:*",
+    "ember-content-mapper": "0.3.1",
+    "ember-modifier": "^4.3.0",
+    "ember-source": "7.2.0",
+    "mitata": "^1.0.34",
+    "typescript": "7.1.0-dev.20260901.1"
+  },
+  "volta": {
+    "extends": "../../package.json"
+  }
+}

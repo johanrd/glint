@@ -1,0 +1,41 @@
+name: Bench
+
+on:
+  pull_request:
+
+jobs:
+  template-cost:
+    name: Template cost (TS 7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Bench head
+        run: |
+          pnpm install --frozen-lockfile && pnpm build && pnpm install --frozen-lockfile
+          pnpm --filter bench bench:check --runs 3 --json "$RUNNER_TEMP/head.json"
+      - name: Bench base
+        # The base may predate the bench, so it gets the head's bench and its mapper setup.
+        run: |
+          git worktree add "$RUNNER_TEMP/base" ${{ github.event.pull_request.base.sha }}
+          cp -R test-packages/bench "$RUNNER_TEMP/base/test-packages/"
+          rm -rf "$RUNNER_TEMP/base/test-packages/bench/node_modules" "$RUNNER_TEMP/base/test-packages/bench/generated"
+          node -e '
+            const fs = require("fs");
+            const head = require("./package.json");
+            const file = process.argv[1];
+            const base = JSON.parse(fs.readFileSync(file, "utf8"));
+            base.pnpm.packageExtensions = head.pnpm.packageExtensions;
+            fs.writeFileSync(file, JSON.stringify(base, null, 2) + "\n");
+          ' "$RUNNER_TEMP/base/package.json"
+          cd "$RUNNER_TEMP/base"
+          pnpm install --no-frozen-lockfile && pnpm build && pnpm install --no-frozen-lockfile
+          pnpm --filter bench bench:check --runs 3 --json "$RUNNER_TEMP/base.json"
+      - name: Compare
+        run: node test-packages/bench/compare.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" | tee -a "$GITHUB_STEP_SUMMARY"
