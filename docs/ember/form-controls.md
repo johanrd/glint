@@ -59,4 +59,13 @@ The error is reported on the form's `{{on "submit"}}`.
 - **Radio groups with static `value`s:** `value` is the union of them, or `''` while none is checked.
 - **Ignored:** dynamic names, `form="…"`, `{{#in-element}}`, and controls a component renders internally.
 
-Disabled controls are in `elements`, unlike in `FormData`.
+## `elements` and `FormData`
+
+`FormData` holds what the browser would submit. It leaves out disabled controls and unchecked checkboxes, and its values are `string | File | null`. `elements` holds every control, including disabled ones, with its element type: `.checked`, `.valueAsNumber` and `.valueAsDate` are available.
+
+```ts
+let { name } = event.currentTarget.elements;
+save({ name: name.disabled ? null : name.value }); // as FormData would
+```
+
+Use `FormData` for dynamic names, files and `<select multiple>`.

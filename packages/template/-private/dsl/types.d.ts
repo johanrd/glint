@@ -105,7 +105,8 @@ export type FormControls<Found extends Record<string, Array<FormControlOccurrenc
   }
 >;
 
-type Flatten<T> = { [K in keyof T]: T[K] };
+// Resolves to one object type, so errors print the controls rather than an alias.
+type Flatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
 export type SVGElementForTagName<Name extends string> = Name extends keyof SVGElementTagNameMap
   ? SVGElementTagNameMap[Name]
