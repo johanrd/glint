@@ -1,6 +1,7 @@
 import './elements';
 import './custom-elements';
 import { AttrValue } from '../index';
+import type { ComponentReturn, InvokableInstance } from '../integration';
 import type { HTMLElementMap, SVGElementMap } from './lib.dom.augmentation';
 
 /**
@@ -20,6 +21,92 @@ export type ElementForTagName<Name extends string> = Name extends keyof HTMLElem
       ? GlintCustomElementTagNameMap[Name]
       : Element
     : Element;
+
+/**
+ * Where an element with a static `name` renders inside a `<form>`, as found by
+ * the template transform: `once` whenever the form renders, `maybe` inside a
+ * conditional block, `many` inside `{{#each}}` or a component's contents. The
+ * element is a tag name, or the `Element` of a component the `name` was passed to.
+ */
+export type FormControlOccurrence = [
+  element: unknown,
+  presence: 'once' | 'maybe' | 'many',
+  radioValue?: string,
+];
+
+/** The `Element` of a component's signature: where its `...attributes` land. */
+export type ComponentElement<C> = C extends abstract new (
+  ...args: any
+) => InvokableInstance<infer F>
+  ? ReturnType<F> extends ComponentReturn<any, infer El>
+    ? El
+    : never
+  : never;
+
+type OccurrenceElement<E> = E extends string ? ElementForTagName<E> : E;
+
+// The HTML spec's "listed elements" are the ones with the constraint validation API.
+type ListedOccurrences<T> = T extends [infer Head extends FormControlOccurrence, ...infer Rest]
+  ? OccurrenceElement<Head[0]> extends { willValidate: boolean; form: HTMLFormElement | null }
+    ? [Head, ...ListedOccurrences<Rest>]
+    : ListedOccurrences<Rest>
+  : [];
+
+type OnceOccurrences<T> = T extends [infer Head extends FormControlOccurrence, ...infer Rest]
+  ? Head[1] extends 'once'
+    ? [Head, ...OnceOccurrences<Rest>]
+    : OnceOccurrences<Rest>
+  : [];
+
+// When every control of a group is a radio with a static `value`, the group's
+// value is one of them, or '' while none is checked.
+type RadioGroup<T> =
+  T extends Array<[unknown, unknown, infer Value extends string]>
+    ? RadioNodeList & { value: Value | '' }
+    : RadioNodeList;
+
+// `form.elements[name]` is the control itself when one renders, and a
+// `RadioNodeList` when several do.
+type FormControlFor<T> = T extends [[infer E, 'once' | 'maybe', ...unknown[]]]
+  ? OccurrenceElement<E>
+  : OnceOccurrences<T> extends [unknown, unknown, ...unknown[]]
+    ? RadioGroup<T>
+    : T extends Array<[infer E, unknown, ...unknown[]]>
+      ? OccurrenceElement<E> | RadioGroup<T>
+      : never;
+
+// A collection member of the same name (`length`, `item`, `namedItem`) wins
+// over the control.
+type FormControlName<K, T, Presence> = K extends keyof HTMLFormControlsCollection
+  ? never
+  : ListedOccurrences<T> extends []
+    ? never
+    : OnceOccurrences<ListedOccurrences<T>> extends []
+      ? Presence extends 'optional'
+        ? K
+        : never
+      : Presence extends 'required'
+        ? K
+        : never;
+
+/**
+ * The named controls of a `<form>`'s `elements` collection, given the named
+ * elements the transform found in its contents.
+ */
+export type FormControls<Found extends Record<string, Array<FormControlOccurrence>>> = Flatten<
+  {
+    [K in keyof Found as FormControlName<K, Found[K], 'required'>]: FormControlFor<
+      ListedOccurrences<Found[K]>
+    >;
+  } & {
+    [K in keyof Found as FormControlName<K, Found[K], 'optional'>]?: FormControlFor<
+      ListedOccurrences<Found[K]>
+    >;
+  }
+>;
+
+// Resolves to one object type, so errors print the controls rather than an alias.
+type Flatten<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
 export type SVGElementForTagName<Name extends string> = Name extends keyof SVGElementTagNameMap
   ? SVGElementTagNameMap[Name]

@@ -14,6 +14,8 @@ import {
   AttributesForElement,
   AttributesForTagName,
   ElementForTagName,
+  FormControlOccurrence,
+  FormControls,
   MathMlElementForTagName,
   SVGElementForTagName,
 } from './types';
@@ -107,6 +109,33 @@ export declare function emitElement<Name extends string | 'math' | 'svg'>(
     : Name extends 'svg'
       ? AttributesForElement<SVGElementForTagName<'svg'>>
       : AttributesForTagName<Name>;
+};
+
+/*
+ * Emits a `<form>` whose `elements` collection is typed with the named
+ * controls the transform found in its static contents. This:
+ *
+ *     <form {{on "submit" this.submit}}>
+ *       <input name="from">
+ *       {{#if @withTo}}<input name="to">{{/if}}
+ *     </form>
+ *
+ * Would produce code like:
+ *
+ *     const __glintY__ = emitFormElement<{
+ *       "from": [["input", "once"]];
+ *       "to": [["input", "maybe"]];
+ *     }>("form");
+ *
+ * so that a handler declaring `currentTarget: HTMLFormElement & { elements:
+ * { from: HTMLInputElement } }` is checked against the template.
+ */
+export declare function emitFormElement<Found extends Record<string, Array<FormControlOccurrence>>>(
+  name: 'form',
+): {
+  name: 'form';
+  element: HTMLFormElement & { elements: HTMLFormControlsCollection & FormControls<Found> };
+  attributes: AttributesForTagName<'form'>;
 };
 
 export declare function emitSVGElement<Name extends keyof SVGElementTagNameMap>(
