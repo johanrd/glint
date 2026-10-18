@@ -36,6 +36,7 @@ export class GlintEnvironment {
     // Glint V1:
     let additionalGlobals = null;
     let additionalSpecialForms = {};
+    let formControls = topLevelGlintConfigObject?.formControls === true;
     if (topLevelGlintConfigObject) {
       if (
         topLevelGlintConfigObject.additionalGlobals ||
@@ -60,7 +61,7 @@ export class GlintEnvironment {
 
     let extensions: GlintExtensionsConfig = { ...DEFAULT_EXTENSIONS };
 
-    const envUserConfig = { additionalGlobals, additionalSpecialForms };
+    const envUserConfig = { additionalGlobals, additionalSpecialForms, formControls };
 
     let config = emberTemplateImportsEnvironment(envUserConfig) as GlintEnvironmentConfig;
 

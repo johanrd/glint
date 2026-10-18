@@ -83,4 +83,5 @@ export type GlintTemplateConfig = {
   typesModule: string;
   globals?: Array<string>;
   specialForms?: GlintSpecialFormConfig;
+  formControls?: boolean;
 };

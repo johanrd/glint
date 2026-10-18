@@ -136,6 +136,7 @@ export function calculateTemplateSpans(
     backingValue: thisBinding === 'backing-class' ? 'this' : undefined,
     lexicalThis: thisBinding === 'lexical',
     useJsDoc: environment.isUntypedScript(script.filename),
+    formControls: tagConfig.formControls,
   });
 
   for (let { message, location } of transformedTemplate.errors) {
