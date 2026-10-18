@@ -1,6 +1,7 @@
 import './elements';
 import './custom-elements';
 import { AttrValue } from '../index';
+import type { ComponentReturn, InvokableInstance } from '../integration';
 import type { HTMLElementMap, SVGElementMap } from './lib.dom.augmentation';
 
 /**
@@ -20,6 +21,51 @@ export type ElementForTagName<Name extends string> = Name extends keyof HTMLElem
       ? GlintCustomElementTagNameMap[Name]
       : Element
     : Element;
+
+/** The `Element` of a component's signature: where its `...attributes` land. */
+export type ComponentElement<C> = C extends abstract new (
+  ...args: any
+) => InvokableInstance<infer F>
+  ? ReturnType<F> extends ComponentReturn<any, infer El>
+    ? El
+    : unknown
+  : unknown;
+
+type FormControl = { willValidate: boolean; form: HTMLFormElement | null };
+
+type ElementControl<El> = 0 extends 1 & El
+  ? unknown
+  : unknown extends El
+    ? unknown
+    : El extends FormControl
+      ? El
+      : never;
+
+/**
+ * The control a component adds to a `<form>`'s `elements` under the `name` or
+ * `id` it is given: its `Element` when that is a form control. The component is
+ * trusted to spread `...attributes` once, as for its `Element` type.
+ */
+export type ComponentControl<C> = ElementControl<ComponentElement<C>>;
+
+type Named<Found> = {
+  [K in keyof Found as K extends keyof HTMLFormControlsCollection
+    ? never
+    : [Found[K]] extends [undefined]
+      ? never
+      : K]: Found[K];
+};
+type Optional<O> = { [K in keyof O as undefined extends O[K] ? never : K]: O[K] } & {
+  [K in keyof O as undefined extends O[K] ? K : never]?: Exclude<O[K], undefined>;
+};
+
+/**
+ * The controls of a `<form>`'s `elements` collection, as found by the template
+ * transform: a control that may be absent is optional, and a name that a member
+ * of the collection (`length`, `item`, `namedItem`) shadows is left out.
+ */
+export type FormControls<Found> =
+  Optional<Named<Found>> extends infer O ? { [K in keyof O]: O[K] } : never;
 
 export type SVGElementForTagName<Name extends string> = Name extends keyof SVGElementTagNameMap
   ? SVGElementTagNameMap[Name]
