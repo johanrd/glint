@@ -99,6 +99,7 @@ export default function emberTemplateImportsEnvironment(
   return {
     template: {
       typesModule: '@glint/ember-tsc/-private/dsl',
+      formControls: options['formControls'] === true,
       specialForms: {
         globals: {
           if: 'if',

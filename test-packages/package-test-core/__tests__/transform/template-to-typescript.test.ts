@@ -1244,6 +1244,145 @@ describe('Transform: rewriteTemplate', () => {
       `);
     });
 
+    function formControls(template: string): string | undefined {
+      return templateBody(template, {
+        specialForms: { if: 'if', unless: 'if-not' },
+        formControls: true,
+      })
+        .split('\n')
+        .find((line) => line.includes('emitFormElement'));
+    }
+
+    test('form with named controls', () => {
+      let template = stripIndent`
+        <form>
+          <input name="from">
+          {{#if @withTo}}<input name="to">{{/if}}
+          {{#let @value as |value|}}<input name="value" value={{value}}>{{/let}}
+          {{#each @list as |item|}}<input name="item" value={{item}}>{{else}}<input name="empty">{{/each}}
+          {{#in-element @target}}<input name="outside">{{/in-element}}
+          <Field><select name="connector"></select></Field>
+          <input name="size" type="radio"><input name="size" type="radio">
+          <input name={{@dynamic}}>
+          <input name="elsewhere" form="other">
+          <iframe name="frame"></iframe>
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "from": globalThis.HTMLElementTagNameMap["input"]; "to"?: globalThis.HTMLElementTagNameMap["input"]; "value": globalThis.HTMLElementTagNameMap["input"]; "empty"?: globalThis.HTMLElementTagNameMap["input"]; "connector"?: globalThis.HTMLElementTagNameMap["select"] | globalThis.RadioNodeList; "size": globalThis.RadioNodeList; }>("form");"`,
+      );
+    });
+
+    test('form with controls in exclusive branches', () => {
+      let template = stripIndent`
+        <form>
+          {{#if @a}}<input name="all">{{else if @b}}<select name="all"></select>{{else}}<input name="all">{{/if}}
+          {{#if @a}}<input name="some">{{else if @b}}<input name="some">{{/if}}
+          {{#if @a}}<input name="pair"><input name="pair">{{else}}<input name="pair">{{/if}}
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "all": globalThis.HTMLElementTagNameMap["input"] | globalThis.HTMLElementTagNameMap["select"]; "some"?: globalThis.HTMLElementTagNameMap["input"]; "pair": globalThis.HTMLElementTagNameMap["input"] | globalThis.RadioNodeList; }>("form");"`,
+      );
+    });
+
+    test('form controls found by id', () => {
+      let template = stripIndent`
+        <form>
+          <input id="title" name="title">
+          <select name="role"></select><input id="role" name="other">
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "title": globalThis.HTMLElementTagNameMap["input"]; "role": globalThis.RadioNodeList; "other": globalThis.HTMLElementTagNameMap["input"]; }>("form");"`,
+      );
+    });
+
+    test('form controls rendered by components', () => {
+      let template = stripIndent`
+        <form>
+          <Toggle name="toggle" />
+          <UI.Input name="input" />
+          <this.Field name="field" />
+          {{#let @component as |Yielded|}}<Yielded name="yielded" />{{/let}}
+          <my-input name="custom"></my-input>
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "toggle"?: unknown; "input"?: unknown; "field"?: unknown; "yielded"?: unknown; "custom"?: unknown; }>("form");"`,
+      );
+    });
+
+    test('form controls the collection does not name', () => {
+      let template = stripIndent`
+        <form id="own">
+          <input name="0"><input name="constructor"><input type="IMAGE" name="go">
+          <input name="when" type={{@type}}>
+          <input name="here" form="own"><input name="maybe" form={{@form}}>
+          <input name="radio" type="Radio" value="a">
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "when"?: globalThis.HTMLElementTagNameMap["input"]; "here": globalThis.HTMLElementTagNameMap["input"]; "maybe"?: globalThis.HTMLElementTagNameMap["input"]; "radio": globalThis.HTMLElementTagNameMap["input"]; }>("form");"`,
+      );
+    });
+
+    test('form with an element named elements', () => {
+      expect(formControls('<form><input name="elements"><input name="from"></form>')).toBe(
+        undefined,
+      );
+      expect(formControls('<form><img id="elements"><input name="from"></form>')).toBe(undefined);
+    });
+
+    test('form in an untyped script', () => {
+      let template = '<form><input name="from"></form>';
+      expect(templateBody(template, { useJsDoc: true, formControls: true })).toContain(
+        'emitElement("form")',
+      );
+    });
+
+    test('form controls without the option', () => {
+      expect(templateBody('<form><input name="from"></form>')).toContain('emitElement("form")');
+    });
+
+    test('form controls with a dynamic type', () => {
+      let template = stripIndent`
+        <form>
+          <input name="text" type={{if @a "text" "password"}}>
+          <input name="maybe" type={{if @a "date"}}>
+          <input name="image" type={{if @a "image" "text"}}>
+          <input name="unknown" type={{@type}}>
+          <input name="never" type={{unless @a "image" "image"}}>
+        </form>
+      `;
+
+      expect(formControls(template)).toMatchInlineSnapshot(
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "text": globalThis.HTMLElementTagNameMap["input"]; "maybe": globalThis.HTMLElementTagNameMap["input"]; "image"?: globalThis.HTMLElementTagNameMap["input"]; "unknown"?: globalThis.HTMLElementTagNameMap["input"]; }>("form");"`,
+      );
+    });
+
+    test('form without named controls', () => {
+      let template = '<form><input></form>';
+
+      expect(templateBody(template)).toMatchInlineSnapshot(`
+        "{
+        __glintDSL__.noop(__glintDSL__.elementTypes.form);
+        __glintDSL__.noop(__glintDSL__.elementTypes["form"]);
+        const __glintY__ = __glintDSL__.emitElement("form");
+        {
+        __glintDSL__.noop(__glintDSL__.elementTypes.input);
+        __glintDSL__.noop(__glintDSL__.elementTypes["input"]);
+        const __glintY__ = __glintDSL__.emitElement("input");
+        }
+        }"
+      `);
+    });
+
     test('with splattributes', () => {
       let template = '<div ...attributes></div>';
 

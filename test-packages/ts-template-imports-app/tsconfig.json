@@ -6,6 +6,7 @@
   },
   "include": ["src", "types"],
   "glint": {
-    "additionalGlobals": ["t"]
+    "additionalGlobals": ["t"],
+    "formControls": true
   }
 }
