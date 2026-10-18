@@ -2,15 +2,9 @@
 // with templates to include the information necessary for Glint to typecheck them.
 
 import type { ComponentLike, HelperLike, ModifierLike } from '@glint/template';
-import type {
-  Context,
-  FlattenBlockParams,
-  HasContext,
-  TemplateContext,
-} from '@glint/template/-private/integration';
+import type { Context, HasContext, TemplateContext } from '@glint/template/-private/integration';
 import type {
   ComponentSignatureArgs,
-  ComponentSignatureBlocks,
   ComponentSignatureElement,
 } from '@glint/template/-private/signature';
 
@@ -21,10 +15,21 @@ import '@ember/component';
 import '@ember/component/template-only';
 import '@glimmer/component';
 
+// FlattenBlockParams<ComponentSignatureBlocks<S>> as one mapped type.
+type ContextBlocks<S> = S extends { Blocks: infer Blocks }
+  ? {
+      [Block in keyof Blocks]: Blocks[Block] extends unknown[]
+        ? Blocks[Block]
+        : Blocks[Block] extends { Params: { Positional: infer U } }
+          ? U
+          : Blocks[Block];
+    }
+  : {};
+
 type ComponentContext<This, S> = TemplateContext<
   This,
   ComponentSignatureArgs<S>['Named'],
-  FlattenBlockParams<ComponentSignatureBlocks<S>>,
+  ContextBlocks<S>,
   ComponentSignatureElement<S>
 >;
 
