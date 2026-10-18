@@ -27,6 +27,8 @@ export type EmbeddedTemplate = {
   /** Offsets into the original script, in the same shape as `GlintEmitMetadata['templateLocation']`. */
   templateLocation: NonNullable<GlintEmitMetadata['templateLocation']>;
   thisBinding: TemplateThisBinding;
+  /** JavaScript names in scope at the template; see `templateLexicalBindings`. */
+  lexicalBindings?: ReadonlySet<string> | undefined;
   /** Text emitted before / after the template's transformed output (e.g. `export default `). */
   prepend?: string | undefined;
   append?: string | undefined;
@@ -100,4 +102,95 @@ export function templateThisBinding(ts: TSLib, node: ts.Node): TemplateThisBindi
       }
     })(),
   );
+}
+
+/**
+ * The JavaScript names in scope at a template, as Babel's `scope.getBinding` gives Ember's
+ * `lexicalScope`. Class members and type-only imports are not bindings.
+ */
+export function templateLexicalBindings(ts: TSLib, node: ts.Node): Set<string> {
+  let names = new Set<string>();
+  let addName = (name: ts.BindingName | ts.Identifier | undefined): void => {
+    if (!name) return;
+    if (ts.isIdentifier(name)) {
+      names.add(name.text);
+    } else {
+      for (let element of name.elements) {
+        if (!ts.isOmittedExpression(element)) addName(element.name);
+      }
+    }
+  };
+  let addStatements = (statements: ts.NodeArray<ts.Statement>): void => {
+    for (let statement of statements) {
+      if (ts.isVariableStatement(statement)) {
+        statement.declarationList.declarations.forEach((d) => addName(d.name));
+      } else if (
+        ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement)
+      ) {
+        addName(statement.name);
+      } else if (ts.isModuleDeclaration(statement) && ts.isIdentifier(statement.name)) {
+        addName(statement.name);
+      } else if (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly) {
+        addName(statement.name);
+      } else if (ts.isImportDeclaration(statement)) {
+        let clause = statement.importClause;
+        if (!clause || clause.isTypeOnly) continue;
+        addName(clause.name);
+        let bindings = clause.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) {
+          addName(bindings.name);
+        } else if (bindings) {
+          for (let element of bindings.elements) {
+            if (!element.isTypeOnly) addName(element.name);
+          }
+        }
+      }
+    }
+  };
+  let addHoistedVars = (scope: ts.Node): void => {
+    ts.forEachChild(scope, function visit(child): void {
+      if (
+        ts.isFunctionLike(child) ||
+        ts.isClassLike(child) ||
+        ts.isClassStaticBlockDeclaration(child) ||
+        ts.isModuleDeclaration(child)
+      ) {
+        return;
+      }
+      if (ts.isVariableDeclarationList(child) && !(child.flags & ts.NodeFlags.BlockScoped)) {
+        child.declarations.forEach((d) => addName(d.name));
+      }
+      ts.forEachChild(child, visit);
+    });
+  };
+
+  for (let scope = node.parent; scope; scope = scope.parent) {
+    if (ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)) {
+      addStatements(scope.statements);
+    } else if (ts.isCaseBlock(scope)) {
+      scope.clauses.forEach((clause) => addStatements(clause.statements));
+    } else if (
+      (ts.isForStatement(scope) || ts.isForInStatement(scope) || ts.isForOfStatement(scope)) &&
+      scope.initializer &&
+      ts.isVariableDeclarationList(scope.initializer)
+    ) {
+      scope.initializer.declarations.forEach((d) => addName(d.name));
+    } else if (ts.isCatchClause(scope)) {
+      addName(scope.variableDeclaration?.name);
+    } else if (ts.isClassLike(scope)) {
+      addName(scope.name);
+    } else if (ts.isFunctionLike(scope)) {
+      scope.parameters.forEach((p) => addName(p.name));
+      if (ts.isFunctionExpression(scope)) addName(scope.name);
+    }
+
+    if (ts.isSourceFile(scope) || ts.isClassStaticBlockDeclaration(scope)) {
+      addHoistedVars(scope);
+    } else if (ts.isFunctionLike(scope) && 'body' in scope && scope.body) {
+      addHoistedVars(scope.body);
+    }
+  }
+  return names;
 }

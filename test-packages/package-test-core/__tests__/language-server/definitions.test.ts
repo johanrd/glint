@@ -95,6 +95,26 @@ describe('Language Server: Definitions (ts plugin)', () => {
     `);
   });
 
+  test('lowercase tag naming a lexical binding', async () => {
+    let fixture = (name: string, tag: string): string => stripIndent`
+      import Component from '@glimmer/component';
+      import ${name} from './Greeting.gts';
+
+      export default class Application extends Component {
+        <template>
+          <${tag} @message="hello" />
+        </template>
+      }
+    `;
+    let path = 'ts-template-imports-app/src/empty-fixture.gts';
+
+    let lowercase = await requestDefinition(path, 'glimmer-ts', fixture('label', 'la%bel'));
+    let uppercase = await requestDefinition(path, 'glimmer-ts', fixture('Label', 'La%bel'));
+
+    expect(lowercase).toHaveLength(1);
+    expect(lowercase).toEqual(uppercase);
+  });
+
   test('arg passing', async () => {
     expect(
       await requestDefinition(

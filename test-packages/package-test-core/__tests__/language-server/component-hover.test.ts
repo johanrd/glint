@@ -136,6 +136,25 @@ describe('Language Server: Component Hover (g-component-hover plugin)', () => {
     expect(hover).toBeNull();
   });
 
+  // Not an HTML tag name: for those the HTML service's element hover wins.
+  test('fires on a lowercase tag naming a lexical binding', async () => {
+    const hover = await performComponentHoverRequestAt(
+      stripIndent`
+        import Component from '@glimmer/component';
+        import greeting from './Greeting.gts';
+
+        export default class Application extends Component {
+          <template>
+            <greet%ing @target="world" />
+          </template>
+        }
+      `,
+    );
+
+    expect(hover).not.toBeNull();
+    expect((hover!.contents as { value: string }).value).toContain('interface greetingSignature');
+  });
+
   test('does not fire on a plain HTML element', async () => {
     const hover = await performComponentHoverRequestAt(
       stripIndent`

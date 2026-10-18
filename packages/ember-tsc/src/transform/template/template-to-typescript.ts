@@ -74,6 +74,8 @@ export type TemplateToTypescriptOptions = {
   typesModule: string;
   meta?: GlintEmitMetadata | undefined;
   globals?: Array<string> | undefined;
+  /** Names in JavaScript scope; a lowercase tag naming one is a component, as in strict mode. */
+  lexicalBindings?: ReadonlySet<string> | undefined;
   backingValue?: string;
   lexicalThis?: boolean;
   preamble?: Array<string>;
@@ -108,6 +110,7 @@ export function templateToTypescript(
   {
     typesModule,
     globals,
+    lexicalBindings,
     meta,
     backingValue,
     lexicalThis = false,
@@ -782,7 +785,8 @@ export function templateToTypescript(
       if (
         firstCharacter.toUpperCase() === firstCharacter ||
         node.tag.includes('.') ||
-        scope.hasBinding(node.tag)
+        scope.hasBinding(node.tag) ||
+        lexicalBindings?.has(node.tag)
       ) {
         emitComponent(node);
       } else {

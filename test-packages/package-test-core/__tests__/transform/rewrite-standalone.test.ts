@@ -259,6 +259,60 @@ describe('Transform: rewriteModuleStandalone', () => {
     });
   });
 
+  describe('lexical bindings named like HTML tags', () => {
+    test('imports, declarations, parameters, hoisting and catch/loop bindings', () => {
+      expectParity(
+        'test.gts',
+        stripIndent`
+          import Component from '@glimmer/component';
+          import { label, type output } from './x';
+          import type { input } from './x';
+          import * as form from './x';
+          import table = require('./x');
+          export const select = <template>custom</template>;
+          export default function option() {}
+          enum caption {}
+          namespace legend.inner {}
+          if (Math.random()) { var meter = 1; }
+          function nested() { var progress = 1; }
+
+          <template>
+            <label /><output /><input /><form /><table /><select /><option />
+            <caption /><legend /><meter /><progress />
+          </template>
+
+          export function render({ details: [summary] }: any, ...dialog: Array<unknown>) {
+            try {
+              for (const td of []) {
+                switch (td) {
+                  case 1:
+                    const th = 1;
+                    return <template><details /><summary /><dialog /><td /><th /><tr /></template>;
+                }
+              }
+            } catch ({ address }) {
+              return <template><address /></template>;
+            }
+          }
+
+          export class Picker extends Component {
+            select = 1;
+            constructor(owner: unknown, private menu: unknown) { super(owner, {}); }
+            method(nav: unknown) {
+              return <template><nav /><menu /><select /></template>;
+            }
+            static { var header = 1; }
+            <template><header /><nav /><select /></template>
+          }
+
+          const figure = class article {
+            <template><article /><figure /></template>
+          };
+        `,
+      );
+    });
+  });
+
   describe('imports', () => {
     test('imported bindings shadow globals and resolve special forms', () => {
       expectParity(
