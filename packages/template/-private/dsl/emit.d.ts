@@ -280,3 +280,16 @@ export declare function bindInvokable<Args extends unknown[], T, GivenNamed>(
   invokable: (...args: Args) => T,
   named: NamedArgs<GivenNamed>,
 ): Invokable<BindNamedResult<Args, T, GivenNamed>>;
+
+/*
+ * Emits a `<form>` whose `elements` are typed with the named controls the
+ * transform found in its template, e.g. `emitFormElement<{ "from":
+ * HTMLInputElement; "to"?: HTMLInputElement }>("form")`.
+ */
+export declare function emitFormElement<Found>(name: 'form'): {
+  name: 'form';
+  element: HTMLFormElement & {
+    elements: HTMLFormControlsCollection & import('./types').FormControls<Found>;
+  };
+  attributes: AttributesForTagName<'form'>;
+};
