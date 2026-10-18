@@ -1,6 +1,7 @@
 import { AttrValue, ContentValue } from '..';
 import {
   ComponentReturn,
+  ComponentReturnBlocks,
   AnyContext,
   AnyFunction,
   ModifierReturn,
@@ -146,7 +147,7 @@ export declare function emitComponent<T extends ComponentReturn<any, any>>(
   component: T,
 ): {
   element: T extends ComponentReturn<any, infer El> ? El : any;
-  blockParams: T extends ComponentReturn<infer Yields, any> ? Required<Yields> : any;
+  blockParams: Required<ComponentReturnBlocks<T>>;
 };
 
 /*

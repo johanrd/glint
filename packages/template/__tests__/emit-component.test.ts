@@ -144,7 +144,7 @@ emitComponent(resolveOrReturn(MaybeMyComponent)({ value: 'hi', ...NamedArgsMarke
  */
 {
   let anyComponent = emitComponent({} as any);
-  let [anyComponentParam] = anyComponent.blockParams.default;
+  let [anyComponentParam] = anyComponent.blockParams['default'];
 
   expectTypeOf(anyComponent.element).toBeAny();
   expectTypeOf(anyComponentParam).toBeAny();

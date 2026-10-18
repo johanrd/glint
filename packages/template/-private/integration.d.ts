@@ -46,6 +46,8 @@ export type ComponentReturn<BlockDefs, El = null> = {
   [Element]: El extends null ? unknown : El;
 };
 
+export type ComponentReturnBlocks<T extends ComponentReturn<any, any>> = T[typeof Blocks];
+
 /**
  * Determines the type of `this` and any `@arg`s used in a template,
  * as well as valid `{{yield}}` invocations and `...attributes` usage.
