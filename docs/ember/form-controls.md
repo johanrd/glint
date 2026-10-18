@@ -79,7 +79,8 @@ The error is reported on the form's `{{on "submit"}}`.
 - **`{{#each}}`, component blocks:** optional, and may be a `RadioNodeList`.
 - **A dynamic `type`:** optional if it can be `image`. `{{if}}` and `{{unless}}` with string branches are read.
 - **Radio groups with static `value`s:** `value` is the union of them, or `''` while none is checked.
-- **`unknown`:** a name on a component or a custom element, because it can render a control of any type. A control with `...attributes` is optional, because the caller can replace its `name`.
+- **`<MyInput name="x" />`:** the component's `Element`, where its `...attributes` land, if that is a listed element. Glint assumes the component spreads `...attributes` once. A component from `this`, an argument, a namespace or a block param can be undefined, so its control is optional.
+- **`unknown`:** a component whose `Element` is not a listed element, or may be another element, and custom elements, which may be form-associated. A control with `...attributes` is optional, because the caller can replace its `name`.
 - **Not seen:** dynamic names, `{{#in-element}}`, controls that a component or `{{yield}}` renders, and controls outside the form that join it with `form="…"`. If one of them has the same name as a control in the template, `elements` returns a `RadioNodeList` that the type does not show.
 - **Not typed:** a form with an element named `elements`, which replaces `form.elements`, and forms in `.gjs` files.
 
