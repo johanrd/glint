@@ -65,8 +65,7 @@ A control named `elements` replaces `form.elements`, so such a form is not typed
 ## Limits
 
 - **Components are trusted** to spread `...attributes` once (see above).
-- **Optional controls are not checked.** TypeScript does not report a declared optional property that the template lacks, so `{ email?: HTMLInputElement }` still compiles after `name="email"` is renamed.
-- **`strictFunctionTypes` is required.** Without it, a handler's parameter is not checked against the form, and most of these errors are not reported.
+- **Every declared control must be in the template,** optional ones included. A handler for a form that renders `email` only sometimes declares `email?: HTMLInputElement`, and renaming `name="email"` is still reported.
 
 ## `elements` and `FormData`
 

@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "test": "echo 'no standalone test within this project'",
-    "test:typecheck": "ember-tsc",
+    "test:typecheck": "ember-tsc && ember-tsc -p tsconfig.no-strict-function-types.json",
     "test:tsc": "echo 'no standalone tsc within this project'"
   },
   "dependenciesMeta": {

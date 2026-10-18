@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strictFunctionTypes": false },
+  "include": ["src/form-controls.gts", "src/declared-controls.gts", "types"]
+}
