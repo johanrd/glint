@@ -49,6 +49,16 @@
     "pnpm": "10.6.2"
   },
   "pnpm": {
+    "packageExtensions": {
+      "ember-content-mapper": {
+        "peerDependencies": {
+          "@glint/ember-tsc": "*"
+        }
+      }
+    },
+    "packageExtensions:notes": {
+      "ember-content-mapper": "ember-content-mapper runs Glint's transform on TypeScript 7. As a peer, @glint/ember-tsc resolves to the test app's copy, built from this repo, instead of a published version, so the TS 7 job tests this repo's transform."
+    },
     "overrides": {
       "vscode-languageserver-protocol": "3.17.5"
     },
