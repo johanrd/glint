@@ -1313,8 +1313,29 @@ describe('Transform: rewriteTemplate', () => {
       `;
 
       expect(formControls(template)).toMatchInlineSnapshot(
-        `"const __glintY__ = __glintDSL__.emitFormElement<{ "toggle"?: unknown; "input"?: unknown; "field"?: unknown; "yielded"?: unknown; "custom"?: unknown; }>("form");"`,
+        `"const __glintY__ = __glintDSL__.emitFormElement<{ "toggle": import("@glint/template").FormControlElement<typeof __glintC0__>; "input"?: import("@glint/template").FormControlElement<typeof __glintC1__>; "field"?: import("@glint/template").FormControlElement<typeof __glintC2__>; "yielded"?: import("@glint/template").FormControlElement<typeof __glintC3__>; "custom"?: unknown; }>("form");"`,
       );
+    });
+
+    test('form controls rendered by a component', () => {
+      let template = stripIndent`
+        <form>
+          <Toggle name="toggle" />
+          <Toggle name="pair" /><input name="pair">
+        </form>
+      `;
+
+      let code = templateBody(template, {
+        specialForms: { if: 'if', unless: 'if-not' },
+        formControls: true,
+      });
+      expect(code.split('\n').filter((line) => line.includes('__glintC'))).toMatchInlineSnapshot(`
+        [
+          "const __glintY__ = __glintDSL__.emitFormElement<{ "toggle": import("@glint/template").FormControlElement<typeof __glintC0__>; "pair": (unknown extends import("@glint/template").FormControlElement<typeof __glintC1__> ? unknown : globalThis.RadioNodeList); }>("form");",
+          "var __glintC0__ = __glintY__.element;",
+          "var __glintC1__ = __glintY__.element;",
+        ]
+      `);
     });
 
     test('form controls the collection does not name', () => {

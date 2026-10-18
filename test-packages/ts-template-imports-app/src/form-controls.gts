@@ -28,7 +28,7 @@ export default class FormControls extends Component<{ Args: { flag: boolean; lis
     password: HTMLInputElement;
     own: HTMLInputElement;
     sibling: HTMLInputElement;
-    engine?: unknown;
+    engine: HTMLInputElement;
   }>();
 
   missing = handler<{ until: HTMLInputElement }>();
@@ -39,7 +39,6 @@ export default class FormControls extends Component<{ Args: { flag: boolean; lis
   elsewhere = handler<{ elsewhere: HTMLInputElement }>();
   shadowed = handler<{ length: HTMLInputElement }>();
   notAControl = handler<{ frame: HTMLIFrameElement }>();
-  component = handler<{ engine: HTMLInputElement }>();
   customElement = handler<{ from: HTMLInputElement }>();
   image = handler<{ go: HTMLInputElement }>();
   maybeImage = handler<{ when: HTMLInputElement }>();
@@ -79,8 +78,6 @@ export default class FormControls extends Component<{ Args: { flag: boolean; lis
     <form {{on "submit" this.shadowed}}><input name="length" /></form>
     {{! @glint-expect-error }}
     <form {{on "submit" this.notAControl}}><iframe name="frame"></iframe></form>
-    {{! @glint-expect-error }}
-    <form {{on "submit" this.component}}><Toggle name="engine" /></form>
     {{! @glint-expect-error }}
     <form {{on "submit" this.customElement}}><input name="from" /><my-input name="from"></my-input></form>
     {{! @glint-expect-error }}

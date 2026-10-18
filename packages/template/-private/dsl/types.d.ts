@@ -21,6 +21,28 @@ export type ElementForTagName<Name extends string> = Name extends keyof HTMLElem
       : Element
     : Element;
 
+/** The HTML elements `form.elements` lists: the ones with the constraint validation API. */
+type ListedElement = {
+  [K in keyof HTMLElementTagNameMap]: HTMLElementTagNameMap[K] extends {
+    willValidate: boolean;
+    form: HTMLFormElement | null;
+  }
+    ? HTMLElementTagNameMap[K]
+    : never;
+}[keyof HTMLElementTagNameMap];
+
+/**
+ * The control a component renders where its `...attributes` land: its `Element`
+ * when that is a listed element, `unknown` when it may be anything else.
+ */
+export type FormControlElement<El> = 0 extends 1 & El
+  ? unknown
+  : [El] extends [never]
+    ? unknown
+    : [El] extends [ListedElement]
+      ? El
+      : unknown;
+
 export type SVGElementForTagName<Name extends string> = Name extends keyof SVGElementTagNameMap
   ? SVGElementTagNameMap[Name]
   : Element;

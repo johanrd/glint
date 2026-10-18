@@ -167,9 +167,16 @@ function formControlType({
     ? `globalThis.RadioNodeList & { value: ${[...radioValues, ''].map((value) => JSON.stringify(value)).join(' | ')} }`
     : 'globalThis.RadioNodeList';
   if (possible === 1) return element;
-  if (definite >= 2) return group;
-  return `${element} | ${group}`;
+  if (definite < 2) return `${element} | ${group}`;
+  // A group needs every component in it to render a control.
+  let components = [...types].filter((type) => type.includes(`.${COMPONENT_CONTROL}<`));
+  return components.length
+    ? `(unknown extends ${components.join(' | ')} ? unknown : ${group})`
+    : group;
 }
+
+// The DSL type of the control a component renders.
+const COMPONENT_CONTROL = 'FormControlElement';
 
 // The members of `HTMLFormControlsCollection` and `HTMLCollection`.
 export const FORM_COLLECTION_MEMBERS = ['item', 'length', 'namedItem'] as const;
@@ -238,6 +245,8 @@ export function templateToTypescript(
   return mapTemplateContents(originalTemplate, { embeddingSyntax }, (ast, mapper) => {
     let { rangeForNode } = mapper;
     let scope = new ScopeStack([]);
+    // Components that a form types a control from, with the variable holding their element.
+    let formControlComponents = new Map<AST.ElementNode, string>();
     let inHtmlContext: 'svg' | 'math' | 'default' = 'default';
 
     emitTemplateBoilerplate(() => {
@@ -1073,6 +1082,13 @@ export function templateToTypescript(
         mapper.text('));');
         mapper.newline();
 
+        // A form above reads the type of the element this component renders as a control.
+        let formControl = formControlComponents.get(node);
+        if (formControl) {
+          mapper.text(`var ${formControl} = __glintY__.element;`);
+          mapper.newline();
+        }
+
         emitAttributesAndModifiers(node, 'component');
 
         if (!node.selfClosing) {
@@ -1344,28 +1360,46 @@ export function templateToTypescript(
 
             let joins = association(statement);
             let component = isComponentTag(tag) || inner.has(tag);
-            if (joins === 'no') {
-              // The control belongs to another form.
-            } else if (component || tag.includes('-')) {
-              // A component or a form-associated custom element may render a control here.
-              addControls(found, controlKeys(statement, null));
-            } else if (FORM_CONTROL_TAGS.some((listed) => listed === tag)) {
-              // `...attributes` can replace a control's `name`, `type` and `form`.
-              let spread = statement.attributes.some((attr) => attr.name === '...attributes');
-              let types = tag !== 'input' ? [] : spread ? null : inputTypes(statement, keyword);
-              let every = (type: string): boolean =>
-                !!types?.length && types.every((t) => t === type);
-              // An image button is not in `elements`.
-              if (!every('image')) {
-                addControls(
-                  found,
-                  controlKeys(statement, {
-                    type: `globalThis.HTMLElementTagNameMap[${JSON.stringify(tag)}]`,
-                    certain: joins === 'yes' && !spread && !!types && !types.includes('image'),
-                    radioValue: every('radio') ? attributeValue(statement, 'value') : null,
-                  }),
-                );
+            let listed = FORM_CONTROL_TAGS.some((listed) => listed === tag);
+            // `...attributes` can replace a control's `name`, `type` and `form`, and a
+            // component may spread its `type` onto an input.
+            let spread = statement.attributes.some((attr) => attr.name === '...attributes');
+            let types =
+              listed && tag !== 'input' ? [] : spread ? null : inputTypes(statement, keyword);
+            let every = (type: string): boolean =>
+              !!types?.length && types.every((t) => t === type);
+            let certain = joins === 'yes' && !spread && !!types && !types.includes('image');
+
+            if (joins === 'no' || every('image')) {
+              // The control belongs to another form, or is an image button, which is
+              // not in `elements`.
+            } else if (component) {
+              // The component's `Element`, where its `...attributes` land. One from
+              // `this`, an argument, a namespace or a block param may be undefined.
+              let direct = !tag.includes('.') && !tag.startsWith('@') && !inner.has(tag);
+              let element = `__glintC${formControlComponents.size}__`;
+              let type = `import("${typesModule}").${COMPONENT_CONTROL}<typeof ${element}>`;
+              let controls = controlKeys(statement, {
+                type,
+                certain: certain && direct,
+                radioValue: null,
+              });
+              if (controls.size) {
+                formControlComponents.set(statement, element);
+                addControls(found, controls);
               }
+            } else if (tag.includes('-')) {
+              // A form-associated custom element is a control of unknown type.
+              addControls(found, controlKeys(statement, null));
+            } else if (listed) {
+              addControls(
+                found,
+                controlKeys(statement, {
+                  type: `globalThis.HTMLElementTagNameMap[${JSON.stringify(tag)}]`,
+                  certain,
+                  radioValue: every('radio') ? attributeValue(statement, 'value') : null,
+                }),
+              );
             }
 
             if (component) {
