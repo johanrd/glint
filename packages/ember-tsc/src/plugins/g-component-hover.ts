@@ -83,12 +83,21 @@ function findComponentAtOffset(
     const elementNode = findElementNodeInTree(span.glimmerAstMapping, relativeOffset);
     if (!elementNode) continue;
 
-    if (elementNode.sourceNode.type !== 'ElementNode') continue;
-    const tagName: string = elementNode.sourceNode.tag;
-    const firstChar = tagName.charAt(0);
+    const { sourceNode } = elementNode;
+    if (sourceNode.type !== 'ElementNode') continue;
+    const tagName: string = sourceNode.tag;
 
-    // Components are PascalCase or namespaced (Foo.Bar)
-    if (firstChar !== firstChar.toUpperCase() && !tagName.includes('.')) {
+    // A component is an element the transform resolved, which includes lowercase
+    // tags naming a block param or a lexical binding.
+    let elementMapping = elementNode;
+    while (elementMapping.parent?.sourceNode === sourceNode) elementMapping = elementMapping.parent;
+    const tagMapping = elementMapping.children.find(
+      (child) => child.sourceNode === sourceNode.path,
+    );
+    if (
+      !tagMapping ||
+      !span.transformedSource.startsWith('__glintDSL__.resolve(', tagMapping.transformedRange.start)
+    ) {
       return null; // plain element
     }
 

@@ -10,20 +10,89 @@ describe('Transform: rewriteModule', () => {
 
     // In strict mode, Ember invokes a lexical binding named like an HTML tag
     // as a component (`<select />` with `select` in scope).
-    test('with a lexical binding named like an HTML tag', () => {
-      let script = {
-        filename: 'test.gts',
-        contents: stripIndent`
+    describe('with a lexical binding named like an HTML tag', () => {
+      function transform(contents: string): string {
+        let script = { filename: 'test.gts', contents };
+        let transformedModule = rewriteModule(ts, { script }, env);
+        expect(transformedModule?.errors).toEqual([]);
+        return transformedModule?.transformedContents ?? '';
+      }
+
+      test('module-level const', () => {
+        let result = transform(stripIndent`
           const select = <template>custom</template>;
           export default <template><select /></template>;
-        `,
-      };
+        `);
 
-      let transformedModule = rewriteModule(ts, { script }, env);
+        expect(result).toContain('__glintDSL__.resolve(select)');
+        expect(result).not.toContain('emitElement("select")');
+      });
 
-      expect(transformedModule?.errors).toEqual([]);
-      expect(transformedModule?.transformedContents).toContain('__glintDSL__.resolve(select)');
-      expect(transformedModule?.transformedContents).not.toContain('emitElement("select")');
+      test('import', () => {
+        let result = transform(stripIndent`
+          import { label } from './x';
+          export default <template><label /></template>;
+        `);
+
+        expect(result).toContain('__glintDSL__.resolve(label)');
+        expect(result).not.toContain('emitElement("label")');
+      });
+
+      test('function parameter', () => {
+        let result = transform(stripIndent`
+          export function render(select: unknown) {
+            return <template><select /></template>;
+          }
+        `);
+
+        expect(result).toContain('__glintDSL__.resolve(select)');
+      });
+
+      test('hoisted var in a nested block', () => {
+        let result = transform(stripIndent`
+          if (Math.random()) { var select = <template>custom</template>; }
+          export default <template><select /></template>;
+        `);
+
+        expect(result).toContain('__glintDSL__.resolve(select)');
+      });
+
+      test('a binding in another function stays an element', () => {
+        let result = transform(stripIndent`
+          function other() {
+            const select = <template>custom</template>;
+            return select;
+          }
+          export default <template><select /></template>;
+        `);
+
+        expect(result).toContain('emitElement("select")');
+        expect(result).not.toContain('__glintDSL__.resolve(select)');
+      });
+
+      test('a class field stays an element', () => {
+        let result = transform(stripIndent`
+          import Component from '@glimmer/component';
+          export default class Picker extends Component {
+            select = <template>custom</template>;
+            <template><select /></template>
+          }
+        `);
+
+        expect(result).toContain('emitElement("select")');
+        expect(result).not.toContain('__glintDSL__.resolve(select)');
+      });
+
+      test('a type-only import stays an element', () => {
+        let result = transform(stripIndent`
+          import type { select } from './x';
+          import { type label } from './x';
+          export default <template><select /><label /></template>;
+        `);
+
+        expect(result).toContain('emitElement("select")');
+        expect(result).toContain('emitElement("label")');
+      });
     });
 
     test('with a simple class', () => {

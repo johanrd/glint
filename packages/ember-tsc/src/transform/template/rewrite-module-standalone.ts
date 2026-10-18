@@ -45,6 +45,7 @@ type TemplatePlacement = {
    * implicit `export default` form.
    */
   isExpressionStatement: boolean;
+  lexicalBindings: Set<string>;
 };
 
 /**
@@ -127,6 +128,7 @@ export function rewriteModuleStandalone(
       template: contents.slice(contentStart, contentEnd),
       templateLocation: { start, end, contentStart, contentEnd },
       thisBinding: placement?.thisBinding ?? 'context',
+      lexicalBindings: placement?.lexicalBindings,
     };
 
     if (location.type === 'class-member') {
@@ -209,6 +211,7 @@ function analyzeScript(contents: string, filename: string): ScriptAnalysis {
         placements.set(node.start as number, {
           thisBinding: thisBindingFromAncestors(ancestorsOf(path)),
           isExpressionStatement: isExpressionStatement(path),
+          lexicalBindings: lexicalBindingsOf(path),
         });
       },
     },
@@ -270,4 +273,158 @@ function collectImportedBindings(statement: ImportDeclaration, result: ImportedB
       };
     }
   }
+}
+
+type Pattern = Node & {
+  name?: string;
+  left?: Pattern;
+  value?: Pattern;
+  argument?: Pattern;
+  parameter?: Pattern;
+  properties?: Array<Pattern>;
+  elements?: Array<Pattern | null>;
+};
+
+type ScopeNode = Node & {
+  id?: Pattern | null;
+  params?: Array<Pattern>;
+  param?: Pattern | null;
+  body?: Node | Array<Node>;
+  init?: Node | null;
+  left?: Node;
+  discriminant?: Node;
+  cases?: Array<{ consequent: Array<Node> }>;
+};
+
+type DeclarationNode = Node & {
+  kind?: string;
+  importKind?: string;
+  declarations?: Array<{ id: Pattern }>;
+  id?: Pattern | null;
+  declaration?: DeclarationNode | null;
+  specifiers?: Array<Node & { importKind?: string | null; local: Pattern }>;
+};
+
+const FUNCTIONS = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
+const VAR_SCOPE_BOUNDARIES = new Set([
+  ...FUNCTIONS,
+  'ClassDeclaration',
+  'ClassExpression',
+  'StaticBlock',
+  'TSModuleDeclaration',
+  'GlimmerTemplate',
+]);
+
+/**
+ * The ESTree counterpart of `templateLexicalBindings`; the two must agree.
+ */
+function lexicalBindingsOf(path: VisitorPath): Set<string> {
+  let names = new Set<string>();
+  let addName = (pattern: Pattern | null | undefined): void => {
+    if (!pattern) return;
+    switch (pattern.type) {
+      case 'Identifier':
+        names.add(pattern.name as string);
+        break;
+      case 'TSQualifiedName':
+      case 'AssignmentPattern':
+        addName(pattern.left);
+        break;
+      case 'Property':
+        addName(pattern.value);
+        break;
+      case 'RestElement':
+        addName(pattern.argument);
+        break;
+      case 'TSParameterProperty':
+        addName(pattern.parameter);
+        break;
+      case 'ObjectPattern':
+        pattern.properties?.forEach(addName);
+        break;
+      case 'ArrayPattern':
+        pattern.elements?.forEach(addName);
+        break;
+    }
+  };
+  let addDeclaration = (node: DeclarationNode | null | undefined): void => {
+    switch (node?.type) {
+      case 'VariableDeclaration':
+        node.declarations?.forEach((d) => addName(d.id));
+        break;
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+      case 'TSEnumDeclaration':
+      case 'TSModuleDeclaration':
+        addName(node.id);
+        break;
+      case 'TSImportEqualsDeclaration':
+        if (node.importKind !== 'type') addName(node.id);
+        break;
+      case 'ImportDeclaration':
+        if (node.importKind === 'type') break;
+        for (let specifier of node.specifiers ?? []) {
+          if (specifier.importKind !== 'type') addName(specifier.local);
+        }
+        break;
+      case 'ExportNamedDeclaration':
+      case 'ExportDefaultDeclaration':
+        addDeclaration(node.declaration);
+        break;
+    }
+  };
+  let addHoistedVars = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(addHoistedVars);
+    if (!node || typeof node !== 'object') return;
+    let { type, kind } = node as DeclarationNode;
+    if (VAR_SCOPE_BOUNDARIES.has(type)) return;
+    if (type === 'VariableDeclaration' && kind === 'var') addDeclaration(node as DeclarationNode);
+    for (let value of Object.values(node)) {
+      if (value && typeof value === 'object') addHoistedVars(value);
+    }
+  };
+
+  for (let child = path, scope = path.parentPath; scope; child = scope, scope = scope.parentPath) {
+    let node = scope.node as ScopeNode;
+    switch (node.type) {
+      case 'Program':
+      case 'BlockStatement':
+      case 'StaticBlock':
+      case 'TSModuleBlock':
+        (node.body as Array<DeclarationNode>).forEach(addDeclaration);
+        break;
+      case 'SwitchStatement':
+        if (child.node !== node.discriminant) {
+          node.cases?.forEach((c) => c.consequent.forEach(addDeclaration));
+        }
+        break;
+      case 'ForStatement':
+        addDeclaration(node.init);
+        break;
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        addDeclaration(node.left);
+        break;
+      case 'CatchClause':
+        addName(node.param);
+        break;
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        addName(node.id);
+        break;
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        node.params?.forEach(addName);
+        if (node.type === 'FunctionExpression') addName(node.id);
+        break;
+    }
+
+    if (node.type === 'Program' || node.type === 'StaticBlock') {
+      (node.body as Array<Node>).forEach(addHoistedVars);
+    } else if (FUNCTIONS.has(node.type)) {
+      addHoistedVars(node.body);
+    }
+  }
+  return names;
 }

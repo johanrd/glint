@@ -14,6 +14,7 @@ import {
   EmbeddedTemplate,
   ImportedBinding,
   ImportedBindings,
+  templateLexicalBindings,
   templateThisBinding,
   PartialCorrelatedSpan,
 } from './index.js';
@@ -63,6 +64,7 @@ export function calculateTaggedTemplateSpans(
       template: node.template.text,
       templateLocation,
       thisBinding: templateThisBinding(ts, node),
+      lexicalBindings: templateLexicalBindings(ts, node),
       prepend: meta?.prepend,
       append: meta?.append,
     },
@@ -93,7 +95,7 @@ export function calculateTemplateSpans(
   }
 
   let { typesModule, globals } = tagConfig;
-  let { template, templateLocation, thisBinding, prepend, append } = embedded;
+  let { template, templateLocation, thisBinding, lexicalBindings, prepend, append } = embedded;
 
   let embeddingSyntax = {
     prefix: script.contents.slice(templateLocation.start, templateLocation.contentStart),
@@ -131,6 +133,7 @@ export function calculateTemplateSpans(
     meta: { prepend, append, templateLocation },
     preamble,
     globals: effectiveGlobals,
+    lexicalBindings,
     embeddingSyntax,
     specialForms,
     backingValue: thisBinding === 'backing-class' ? 'this' : undefined,
