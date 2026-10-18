@@ -8,6 +8,24 @@ describe('Transform: rewriteModule', () => {
   describe('inline tagged template', () => {
     const env = GlintEnvironment.load({});
 
+    // In strict mode, Ember invokes a lexical binding named like an HTML tag
+    // as a component (`<select />` with `select` in scope).
+    test('with a lexical binding named like an HTML tag', () => {
+      let script = {
+        filename: 'test.gts',
+        contents: stripIndent`
+          const select = <template>custom</template>;
+          export default <template><select /></template>;
+        `,
+      };
+
+      let transformedModule = rewriteModule(ts, { script }, env);
+
+      expect(transformedModule?.errors).toEqual([]);
+      expect(transformedModule?.transformedContents).toContain('__glintDSL__.resolve(select)');
+      expect(transformedModule?.transformedContents).not.toContain('emitElement("select")');
+    });
+
     test('with a simple class', () => {
       let script = {
         filename: 'test.gts',
